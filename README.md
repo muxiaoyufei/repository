@@ -107,4 +107,152 @@
       https://react.docschina.org/docs/refs-and-the-dom.html#callback-refs
       
     - 非受控组件
+    - 性能优化
+      Brunch 为了创建最高效的Brunch生产版本。需要安装uglify-js-brunch插件。
+      Browserify 为了创建最高效的Browserify生产版本，需要安装一些插件：npm install --save-dev bundle-collapser envify uglify-js uglifyify
+      ---envify该插件确保正确的编译环境。
+      ---uglifyify该插件移除了开发接口。
+      ---bundle-collapser该插件用数字替代了长长的模块ID
+      ---最后，以上结果都被输添加至uglify-js来得到整合。
+      例：
+      browserify ./index.js \
+      -g [ envify --NODE_ENV production ] \
+      -g uglifyify \
+      -p bundle-collapser/plugin \
+      | uglifyjs --compress --mangle > ./bundle.js
+      /**注意：包的名称是uglify-js,但是它提供的文件叫uglifyjs**/
+      **注意只有生产版本需要这样操作。不要再开发环境中安装这些插件，因为它们会隐藏掉有用的react警告并使结构过程更慢**
+      Rollup 为了创建最高效的Rollup生产版本，需要安装一些插件：
+      npm install --save-dev rollup-plugin-commonjs rollup-plugin-replace rollup-plugin-uglify 
+      ---replace该插件确保正确的编译环境。
+      ---commonjs该插件在Rollup内提供对CommonJS的支持。
+      ---uglify该插件压缩生成最终版本。
+      例：plugins: [
+          // ...
+          require('rollup-plugin-replace')({
+            'process.env.NODE_ENV': JSON.stringify('production')
+          }),
+          require('rollup-plugin-commonjs')(),
+          require('rollup-plugin-uglify')(),
+          // ...
+        ]
+      Webpack为了创建最高效的Webpack生产版本，需要在生产版本的配置中添加这些插件：
+      new webpack.DefinePlugin({
+        'process.env': {
+          NODE_ENV: JSON.stringify('production')
+        }
+      }),
+      new webpack.optimize.UglifyJsPlugin()
+      **注意只有生产版本需要这样操作。不要在开发环境中安装UglifyJsPlugin和DefinePlugin，因为它们会隐藏掉有用的React警告并使构建过程更慢。**
+      继承自React.PureComponent
+      class CounterButton extends React.PureComponent {
+        constructor(props) {
+          super(props);
+          this.state = {count: 1};
+        }
 
+        render() {
+          return (
+            <button
+              color={this.props.color}
+              onClick={() => this.setState(state => ({count: state.count + 1}))}>
+              Count: {this.state.count}
+            </button>
+          );
+        }
+      }
+      大部分情况下，你可以使用React.PureComponent而不必写你自己的shouldComponentUpdate，它只做一个浅比较。但是由于浅比较会忽略属性或状态突变的情况，此时你不能使用它。
+      *不会突变的数据的力量
+      避免此类问题最简单的方式是避免使用值可能会突变的属性或状态
+      ES6支持数组的spread语法可以让它变得更容易。如果你使用的是Create React App，那么此语法默认可用。
+      handleClick() {
+        this.setState(prevState => ({
+          words: [...prevState.words, 'marklar'],
+        }));
+      };
+      你也可以用相似的方式重写可以会突变的对象。例如，假设我们有一个叫colormap的对象，我们想写一个把colormap.right改变成'blue'的函数，我们应该写：
+      function updateColorMap(colormap) {
+        colormap.right = 'blue';
+      }
+      想要实现代码而不污染原始对象，我们可以使用Object.assign方法：
+      function updateColorMap(colormap) {
+        return Object.assign({}, colormap, {right: 'blue'});
+      }
+      updateColorMap现在会返回一个新对象，而不会改变之前的旧对象。Object.assign在ES6中，需要polyfill支持。
+      有一个JavaScript提议来添加对象spread属性以便不会突然变化的更新对象：
+      function updateColorMap(colormap) {
+        return {...colormap, right: 'blue'};
+      }
+      *使用不可突变的数据结构
+        Immutable.js是解决这个问题的另一种方法。它通过结构共享提供不可突变的，持久的集合：
+
+        ---不可突变:一旦创建，集合就不能在另一个时间点改变。
+        ---持久性:可以使用原始集合和一个突变来创建新的集合。原始集合在新集合创建后仍然可用。
+        ---结构共享:新集合尽可能多的使用原始集合的结构来创建，以便将复制操作降至最少从而提升性能。
+      还有两个库可以帮助我们使用不可突变数据：seamless-immutable 和immutability-helper。
+      *Mixin(混入)
+      **注：ES6 本身是不包含混入支持的。因此，如果你使用 class 关键字创建组件，那就不能使用混入功能了。**
+  - 协调
+  - Context
+    Context 通过组件树提供了一个传递数据的方法，从而避免了在每一个层级手动的传递 props 属性。
+    *何时使用Context
+      Context 设计目的是为共享那些被认为对于一个组件树而言是“全局”的数据，例如当前认证的用户、主题或首选语言
+      例: 未使用 Context
+      function ThemedButton(props) {
+        return <Button theme={props.theme} />;
+      }
+
+      // 中间组件
+      function Toolbar(props) {
+        // Toolbar 组件必须添加一个额外的 theme 属性
+        // 然后传递它给 ThemedButton 组件
+        return (
+          <div>
+            <ThemedButton theme={props.theme} />
+          </div>
+        );
+      }
+
+      class App extends React.Component {
+        render() {
+          return <Toolbar theme="dark" />;
+        }
+      }
+      使用Context可以避免通过中间元素传递props：
+      // 创建一个 theme Context,  默认 theme 的值为 light
+      const ThemeContext = React.createContext('light');
+
+      function ThemedButton(props) {
+        // ThemedButton 组件从 context 接收 theme
+        return (
+          <ThemeContext.Consumer>
+            {theme => <Button {...props} theme={theme} />}
+          </ThemeContext.Consumer>
+        );
+      }
+
+      // 中间组件
+      function Toolbar(props) {
+        return (
+          <div>
+            <ThemedButton />
+          </div>
+        );
+      }
+
+      class App extends React.Component {
+        render() {
+          return (
+            <ThemeContext.Provider value="dark">
+              <Toolbar />
+            </ThemeContext.Provider>
+          );
+        }
+      }
+      **注意 不要仅仅为了避免在几个层级下的组件传递 props 而使用 context，它是被用于在多个层级的多个组件需要访问相同数据的情景。**
+      https://react.docschina.org/docs/context.html
+  - Fragments
+    React 中一个常见模式是为一个组件返回多个元素。Fragments 可以让你聚合一个子元素列表，并且不在DOM中增加额外节点。
+    * 动机
+      一个常见模式是为一个组件返回一个子元素列表。
+      https://react.docschina.org/docs/fragments.html
